@@ -1,14 +1,15 @@
 ﻿import React, { useState, useEffect, useCallback, useRef } from "react";
  import {
   signInWithEmailAndPassword, signOut, onAuthStateChanged,
-  createUserWithEmailAndPassword, sendPasswordResetEmail,
+  createUserWithEmailAndPassword, sendPasswordResetEmail, updatePassword,
 } from "firebase/auth";
 import {
   collection, addDoc, getDocs, query, where, orderBy,
   serverTimestamp, doc, updateDoc, setDoc, getDoc,
   deleteDoc, onSnapshot, Timestamp,
 } from "firebase/firestore";
-import { auth, db } from "./firebase.js";
+import { auth, db, functions } from "./firebase.js";
+import { httpsCallable } from "firebase/functions";
 import QueueDisplay from "./QueueDisplay.jsx";
 import ReportsDashboard from "./ReportsDashboard.jsx";
 import { initializeApp } from "firebase/app";
@@ -414,6 +415,7 @@ function LoginScreen({ onToast }) {
   const [otp, setOtp]           = useState("");
   const [otpSent, setOtpSent]   = useState(false);
   const [staffDoc, setStaffDoc] = useState(null); // found staff record
+  const [staffPassword, setStaffPassword] = useState("");
 
   // Patient self check-in state
   const [hospitals, setHospitals] = useState([]);
@@ -459,8 +461,9 @@ function LoginScreen({ onToast }) {
   };
 
   // ── STEP 1: Verify Staff ID ────────────────────────────────────────────────
-  const verifyStaffId = async () => {
+  const staffLogin = async () => {
     if (!staffId.trim()) return onToast("Enter your Staff ID","error");
+    if (!staffPassword) return onToast("Enter your password","error");
 
     // Check lockout
     const lockout = isLockedOut(staffId);
@@ -471,37 +474,40 @@ function LoginScreen({ onToast }) {
 
     setLoading(true);
 
-    // Super admin bypass — check before any Firestore lookup
+    // Super admin bypass — SWIFT-SUPER signs in with email + password
     if (staffId.trim().toUpperCase() === "SWIFT-SUPER") {
       try {
-        await signInWithEmailAndPassword(auth, "e37wiles@gmail.com", "Swift2029!");
+        await signInWithEmailAndPassword(auth, "e37wiles@gmail.com", staffPassword);
         onToast("Welcome, Super Admin!", "success");
       } catch(err) { onToast("Super admin login failed: " + err.message, "error"); }
       setLoading(false); return;
     }
 
     try {
-      // Look up staff by staffId field in sc_staff collection
-      const snap = await getDocs(query(
-        collection(db,"sc_staff"),
-        where("staffId","==", staffId.trim().toUpperCase())
-      ));
-      if (snap.empty) {
+      // Resolve Staff ID -> login email via the public login index (no secrets stored)
+      const idxSnap = await getDoc(doc(db,"sc_login_index", staffId.trim().toUpperCase()));
+      if (!idxSnap.exists()) {
         const attempts = recordFailedAttempt(staffId);
         const remaining = MAX_LOGIN_ATTEMPTS - attempts;
         await writeAuditLog("staff_login_failed", { staffId, attempts, reason: "invalid_id" });
-        if (remaining <= 0) {
-          onToast(`Account locked for 15 minutes after ${MAX_LOGIN_ATTEMPTS} failed attempts.`, "error");
-        } else {
-          onToast(`Staff ID not found. ${remaining} attempt${remaining!==1?"s":""} remaining.`, "error");
-        }
-      } else {
-        const sd = { id: snap.docs[0].id, ...snap.docs[0].data() };
-        setStaffDoc(sd);
-        clearLoginAttempts(staffId);
-        setLoginStep("selfie");
+        onToast(remaining <= 0
+          ? `Account locked for 15 minutes after ${MAX_LOGIN_ATTEMPTS} failed attempts.`
+          : `Incorrect Staff ID or password. ${remaining} attempt${remaining!==1?"s":""} remaining.`, "error");
+        setLoading(false); return;
       }
-    } catch(err) { onToast(err.message, "error"); }
+      const { email } = idxSnap.data();
+      await signInWithEmailAndPassword(auth, email, staffPassword);
+      clearLoginAttempts(staffId);
+      await writeAuditLog("staff_login_success", { staffId, email, method: "password" });
+      onToast("✅ Login successful! Welcome back.", "success");
+    } catch(err) {
+      const attempts = recordFailedAttempt(staffId);
+      const remaining = MAX_LOGIN_ATTEMPTS - attempts;
+      await writeAuditLog("staff_login_failed", { staffId, attempts, reason: "bad_password" });
+      onToast(remaining <= 0
+        ? `Account locked for 15 minutes after ${MAX_LOGIN_ATTEMPTS} failed attempts.`
+        : `Incorrect Staff ID or password. ${remaining} attempt${remaining!==1?"s":""} remaining.`, "error");
+    }
     setLoading(false);
   };
 
@@ -760,14 +766,17 @@ function LoginScreen({ onToast }) {
                   🔑 Staff Login
                 </div>
                 <div style={{fontSize:12,color:"var(--muted)",marginBottom:16,display:"flex",alignItems:"center",gap:6}}>
-                  <span>🛡️</span> Secure 3-step identity verification
+                  <span>🛡️</span> Sign in with your Staff ID and password
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:12}}>
                   <Input placeholder="Enter your Staff ID (e.g. JFK-001)"
                     value={staffId} onChange={e=>setStaffId(e.target.value.toUpperCase())} />
+                  <Input placeholder="Password" type="password"
+                    value={staffPassword} onChange={e=>setStaffPassword(e.target.value)}
+                    onKeyDown={e=>{ if(e.key==="Enter") staffLogin(); }} />
                   <Btn style={{width:"100%",padding:"13px 0",fontSize:15,opacity:loading?0.6:1}}
-                    onClick={verifyStaffId} disabled={loading}>
-                    {loading ? "Verifying…" : "Next: Verify Identity →"}
+                    onClick={staffLogin} disabled={loading}>
+                    {loading ? "Signing in…" : "Sign In →"}
                   </Btn>
                   <div style={{textAlign:"center",marginTop:8,width:"100%"}}>
                     <button onClick={()=>setShowForgotPassword(true)}
@@ -823,20 +832,6 @@ function LoginScreen({ onToast }) {
                       )}
                     </div>
                   )}
-                </div>
-                {/* Progress indicators */}
-                <div style={{display:"flex",gap:8,justifyContent:"center",marginTop:16}}>
-                  {["Staff ID","Selfie","SMS Code"].map((s,i)=>(
-                    <div key={s} style={{textAlign:"center"}}>
-                      <div style={{width:28,height:28,borderRadius:"50%",margin:"0 auto 4px",
-                        background: i===0 ? "var(--blue)" : "rgba(255,255,255,0.2)",
-                        display:"flex",alignItems:"center",justifyContent:"center",
-                        fontSize:12,fontWeight:700,color:"#fff"}}>
-                        {i+1}
-                      </div>
-                      <div style={{fontSize:10,color:"var(--muted)",whiteSpace:"nowrap"}}>{s}</div>
-                    </div>
-                  ))}
                 </div>
               </>
             )}
@@ -1406,32 +1401,30 @@ const [staffCustomId, setStaffCustomId] = useState("");
   };
 
   const addStaff = async () => {
-    if (!staffEmail||!staffName||!staffCustomId)
-      return onToast("Fill in name, Staff ID and email","error");
+    if (!staffName||!staffCustomId||!staffPass)
+      return onToast("Fill in name, Staff ID and a temporary password","error");
+    if (staffPass.trim().length < 6)
+      return onToast("Temporary password must be at least 6 characters","error");
     try {
-      // Create Firestore record first — Auth account created by Super Admin or on first login
-      const newStaffRef = doc(collection(db,"sc_staff"));
-      await setDoc(newStaffRef,{
-        email:     staffEmail.trim().toLowerCase(),
-        name:      staffName.trim(),
-        role:      staffRole,
-        deptId:    staffDept,
+      const createStaffFn = httpsCallable(functions, "createStaff");
+      const res = await createStaffFn({
+        name:         staffName.trim(),
+        staffId:      staffCustomId.trim().toUpperCase(),
         hospitalId,
-        createdAt: serverTimestamp(),
-        staffId:   staffCustomId.trim().toUpperCase(),
-        phone:     staffPhone.trim() || null,
-        status:    "pending",
-        tempPassword: staffPass.trim() || null,
+        role:         staffRole,
+        deptId:       staffDept,
+        tempPassword: staffPass.trim(),
       });
+      const uid = res.data && res.data.uid;
       setStaff(p=>[...p,{
-        id:newStaffRef.id, email:staffEmail, name:staffName,
-        role:staffRole, deptId:staffDept, staffId:staffCustomId, phone:staffPhone
+        id:uid, email:res.data && res.data.email, name:staffName,
+        role:staffRole, deptId:staffDept, staffId:staffCustomId.trim().toUpperCase(), phone:staffPhone
       }]);
       setStaffEmail(""); setStaffPass(""); setStaffName("");
       setStaffRole("receptionist"); setStaffDept("reception");
       setStaffPhone(""); setStaffCustomId("");
-      onToast(`${staffName} added ✓ — Super Admin must activate their login account`, "success");
-    } catch(err) { onToast(err.message.replace("Firebase: ",""),"error"); }
+      onToast(`${staffName} added ✓ — they log in with Staff ID + the temporary password`, "success");
+    } catch(err) { onToast((err.message||"Could not add staff").replace("Firebase: ",""),"error"); }
   };
 
   // Load pending login approval requests
@@ -1483,10 +1476,22 @@ const [staffCustomId, setStaffCustomId] = useState("");
     );
     if (!confirmed) return;
     try {
-      await deleteDoc(doc(db, "sc_staff", s.id));
+      const deleteStaffFn = httpsCallable(functions, "deleteStaff");
+      await deleteStaffFn({ staffUid: s.id });
       setStaff(p => p.filter(x => x.id !== s.id));
       onToast(`${s.name || s.email} removed ✓`, "warn");
-    } catch (err) { onToast(err.message, "error"); }
+    } catch (err) { onToast((err.message||"Could not delete staff").replace("Firebase: ",""), "error"); }
+  };
+
+  const resetStaffPassword = async (s) => {
+    const newPass = window.prompt(`Set a NEW temporary password for "${s.name || s.staffId}".\n\nThey'll be asked to change it on next login. Minimum 6 characters.`);
+    if (newPass === null) return;
+    if (newPass.trim().length < 6) return onToast("Temporary password must be at least 6 characters","error");
+    try {
+      const resetFn = httpsCallable(functions, "resetStaffPassword");
+      await resetFn({ staffUid: s.id, newTempPassword: newPass.trim() });
+      onToast(`Password reset for ${s.name || s.staffId} ✓`, "success");
+    } catch (err) { onToast((err.message||"Could not reset password").replace("Firebase: ",""), "error"); }
   };
 
   const approveLoginRequest = async (req) => {
@@ -1994,8 +1999,8 @@ const [staffCustomId, setStaffCustomId] = useState("");
                   onChange={e=>setStaffCustomId(e.target.value.toUpperCase())} />
                 <Input placeholder="Phone (for SMS 2FA)" value={staffPhone}
                   onChange={e=>setStaffPhone(e.target.value)} type="tel" />
-                <Input placeholder="Email *" value={staffEmail} onChange={e=>setStaffEmail(e.target.value)} type="email" />
-                <Input placeholder="Temporary password (optional)" value={staffPass} onChange={e=>setStaffPass(e.target.value)} type="password" />
+                <Input placeholder="Email (optional)" value={staffEmail} onChange={e=>setStaffEmail(e.target.value)} type="email" />
+                <Input placeholder="Temporary password *" value={staffPass} onChange={e=>setStaffPass(e.target.value)} type="password" />
                 <select value={staffRole} onChange={e=>setStaffRole(e.target.value)}
                   style={{padding:"10px 13px",border:"1px solid var(--border)",borderRadius:8,fontSize:14,background:"#fff"}}>
                   <option value="receptionist">Receptionist</option>
@@ -2107,6 +2112,7 @@ const [staffCustomId, setStaffCustomId] = useState("");
                         {s.role}
                       </span>
                       <Btn variant="outline" size="sm" onClick={()=>startEditStaff(s)}>✏️ Edit</Btn>
+                      <Btn variant="outline" size="sm" onClick={()=>resetStaffPassword(s)}>🔑 Reset</Btn>
                       <Btn variant="danger" size="sm" onClick={()=>deleteStaff(s)}>🗑 Delete</Btn>
                     </div>
                   </div>
@@ -2517,6 +2523,43 @@ function SuspendedScreen() {
 }
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
+function ForcePasswordChange({ onDone, onToast }) {
+  const [pw1, setPw1] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [saving, setSaving] = useState(false);
+  const submit = async () => {
+    if (pw1.length < 6) return onToast("Password must be at least 6 characters","error");
+    if (pw1 !== pw2) return onToast("Passwords do not match","error");
+    setSaving(true);
+    try {
+      await updatePassword(auth.currentUser, pw1);
+      await updateDoc(doc(db,"sc_staff",auth.currentUser.uid), { mustChangePassword:false });
+      onToast("Password updated ✓","success");
+      onDone();
+    } catch(err) {
+      onToast((err.message||"Could not update password").replace("Firebase: ",""),"error");
+    }
+    setSaving(false);
+  };
+  return (
+    <div style={{minHeight:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",
+      background:"linear-gradient(135deg,#1e40af,#3b82f6,#06b6d4)",padding:16}}>
+      <div style={{width:"100%",maxWidth:420,background:"#fff",borderRadius:16,padding:28,boxShadow:"0 10px 40px rgba(0,0,0,0.2)"}}>
+        <div style={{fontFamily:"var(--font-h)",fontWeight:900,fontSize:20,color:"var(--blue)",marginBottom:6}}>Set your password</div>
+        <div style={{fontSize:13,color:"var(--muted)",marginBottom:18}}>For your security, please choose a new password before continuing.</div>
+        <Input placeholder="New password" type="password" value={pw1} onChange={e=>setPw1(e.target.value)} />
+        <div style={{height:10}} />
+        <Input placeholder="Confirm new password" type="password" value={pw2} onChange={e=>setPw2(e.target.value)}
+          onKeyDown={e=>{ if(e.key==="Enter") submit(); }} />
+        <div style={{height:16}} />
+        <Btn style={{width:"100%",padding:"12px 0"}} onClick={submit} disabled={saving}>
+          {saving ? "Saving…" : "Save & Continue →"}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
  function AppInner({ displayHospitalId }) {
   const [user, setUser]           = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -2524,6 +2567,7 @@ function SuspendedScreen() {
   const [staffData, setStaffData] = useState(null);
   const [hospitalData, setHospitalData] = useState(null);
   const [suspended, setSuspended] = useState(false);
+  const [mustChangePw, setMustChangePw] = useState(false);
   const [toast, setToast]         = useState(null);
   const sessionTimer = useRef(null);
 
@@ -2551,29 +2595,37 @@ function SuspendedScreen() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
-      if (u) {
-       resetSessionTimer();
-        const sDoc = await getDoc(doc(db,"sc_staff",u.uid));
-        if (sDoc.exists()) {
-          const sd = sDoc.data();
-          if (sd.isSuperAdmin === true) {
-            setRole("superadmin");
-          } else {
-            setStaffData(sd);
-            setRole(sd.role);
-            const hDoc = await getDoc(doc(db,"sc_hospitals",sd.hospitalId));
-            if (hDoc.exists()) {
-              const hd = hDoc.data();
-              setHospitalData(hd);
-              setSuspended(!hd.active);
+      try {
+        if (u) {
+          resetSessionTimer();
+          const sDoc = await getDoc(doc(db,"sc_staff",u.uid));
+          if (sDoc.exists()) {
+            const sd = sDoc.data();
+            setMustChangePw(sd.mustChangePassword === true);
+            if (sd.isSuperAdmin === true) {
+              setRole("superadmin");
+            } else {
+              setStaffData(sd);
+              setRole(sd.role);
+              const hDoc = await getDoc(doc(db,"sc_hospitals",sd.hospitalId));
+              if (hDoc.exists()) {
+                const hd = hDoc.data();
+                setHospitalData(hd);
+                setSuspended(!hd.active);
+              }
             }
           }
+        } else {
+          if (sessionTimer.current) clearTimeout(sessionTimer.current);
+          setRole(null); setStaffData(null); setHospitalData(null); setSuspended(false);
+          setMustChangePw(false);
         }
-      } else {
-        if (sessionTimer.current) clearTimeout(sessionTimer.current);
-        setRole(null); setStaffData(null); setHospitalData(null); setSuspended(false);
+      } catch (err) {
+        console.error("Auth state error:", err);
+        setRole(null); setStaffData(null);
+      } finally {
+        setAuthLoading(false);
       }
-      setAuthLoading(false);
     });
     return unsub;
   }, [resetSessionTimer]);
@@ -2597,6 +2649,8 @@ if (displayHospitalId) {
 
       {!user ? (
         <LoginScreen onToast={onToast} />
+      ) : mustChangePw ? (
+        <ForcePasswordChange onDone={()=>setMustChangePw(false)} onToast={onToast} />
       ) : suspended ? (
         <SuspendedScreen />
       ) : role==="superadmin" ? (
