@@ -172,7 +172,7 @@
 
   <div class="footer">
     <div class="footer-text">SwiftCare Patient Kiosk &copy; 2026 Wiles Digital Group LLC</div>
-    <a href="/" class="staff-link">Staff Login</a>
+    <a href="/staff.html" class="staff-link">Staff Login</a>
   </div>
 
   <script type="module">
@@ -288,10 +288,15 @@
       const dept = DEPARTMENTS.find(d => d.id === deptId);
 
       try {
-        // Time-based ticket (HHMM) — no sc_queue read (keeps queue reads staff-only)
-        const now = new Date();
-        const hhmm = String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0');
-        const ticket = dept.code + '-' + hhmm;
+        const today = new Date(); today.setHours(0,0,0,0);
+        const qSnap = await getDocs(query(collection(db,'sc_queue'),
+          where('hospitalId','==',hospitalId), where('deptId','==',deptId)));
+        const todayCount = qSnap.docs.filter(d => {
+          const ts = d.data().createdAt?.toDate?.();
+          return ts && ts >= today;
+        }).length;
+
+        const ticket = dept.code + '-' + String(todayCount + 1).padStart(3,'0');
 
         await addDoc(collection(db,'sc_queue'), {
           hospitalId, hospitalName: hospital?.name || '',
@@ -301,13 +306,13 @@
           patientGender: selectedGender || null,
           ticket, status: 'waiting',
           createdAt: serverTimestamp(),
-          checkinType: 'kiosk', position: 0,
+          checkinType: 'kiosk', position: todayCount + 1,
         });
 
         document.getElementById('ticketNum').textContent = ticket;
         document.getElementById('ticketDept').textContent = dept.label;
         document.getElementById('ticketInfo').textContent =
-          'Hello ' + name + '! You are checked in for ' + dept.label + ' at ' + hospital?.name + '. Please wait to be called.';
+          'Hello ' + name + '! You are #' + (todayCount + 1) + ' in the ' + dept.label + ' queue at ' + hospital?.name;
 
         document.getElementById('step2').classList.remove('active');
         document.getElementById('step3').classList.add('active');
