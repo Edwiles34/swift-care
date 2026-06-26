@@ -1,0 +1,10 @@
+{
+  "name": "SwiftCare",
+  "short_name": "SwiftCare",
+  "description": "Patient Queue Management System",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#2563eb",
+  "theme_color": "#2563eb",
+  "orientation": "portrait"
+}

@@ -1,0 +1,119 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>SwiftCare Hospital Admin</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { min-height:100vh; display:flex; align-items:center; justify-content:center;
+      background:linear-gradient(135deg,#1e40af,#3b82f6,#06b6d4); font-family:'Inter',sans-serif; }
+    .card { background:#fff; border-radius:16px; padding:40px; width:100%; max-width:400px;
+      box-shadow:0 20px 60px rgba(0,0,0,0.2); }
+    .logo { text-align:center; margin-bottom:32px; }
+    .logo-icon { width:56px; height:56px; background:#10b981; border-radius:14px;
+      display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:900;
+      color:#fff; margin:0 auto 12px; }
+    .logo h1 { font-size:28px; font-weight:900; color:#2563eb; margin-bottom:4px; }
+    .logo p { font-size:12px; color:#64748b; letter-spacing:2px; text-transform:uppercase; }
+    .badge { display:inline-block; background:#ecfdf5; color:#065f46; border:1px solid #6ee7b7;
+      border-radius:20px; padding:4px 14px; font-size:12px; font-weight:700; margin-bottom:24px; }
+    input { width:100%; padding:12px 14px; border:1px solid #e2e8f0; border-radius:8px;
+      font-size:14px; margin-bottom:12px; outline:none; font-family:'Inter',sans-serif;
+      transition:border-color 0.2s; }
+    input:focus { border-color:#10b981; }
+    button { width:100%; padding:14px; background:#10b981; color:#fff; border:none;
+      border-radius:8px; font-size:15px; font-weight:700; cursor:pointer;
+      font-family:'Inter',sans-serif; transition:background 0.2s; margin-top:4px; }
+    button:hover { background:#059669; }
+    button:disabled { opacity:0.6; cursor:not-allowed; }
+    .error { background:#fee2e2; color:#991b1b; border-radius:8px; padding:10px 14px;
+      font-size:13px; font-weight:600; margin-top:12px; display:none; }
+    .back { text-align:center; margin-top:20px; font-size:13px; color:rgba(255,255,255,0.8); }
+    .back a { color:#fff; font-weight:700; text-decoration:none; }
+    .hospital-name { background:#eff6ff; border-radius:8px; padding:10px 14px;
+      font-size:13px; color:#1d4ed8; font-weight:600; margin-bottom:16px; text-align:center; }
+  </style>
+</head>
+<body>
+  <div>
+    <div class="card">
+      <div class="logo">
+        <div class="logo-icon">HA</div>
+        <h1>SwiftCare</h1>
+        <p>Patient Queue Management</p>
+      </div>
+      <div style="text-align:center; margin-bottom:20px;">
+        <span class="badge">Hospital Admin Access</span>
+      </div>
+      <input type="email" id="email" placeholder="Hospital admin email" autocomplete="email"/>
+      <input type="password" id="password" placeholder="Password" autocomplete="current-password"/>
+      <button id="loginBtn" onclick="login()">Sign In to Hospital Dashboard</button>
+      <div class="error" id="error"></div>
+    </div>
+    <div class="back">
+      <a href="/">Back to Staff Login</a>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const app = initializeApp({
+      apiKey: "AIzaSyCWAEzL_41qvlq_PFAK1yZy-kc_W-Z66yc",
+      authDomain: "swiftcare-26073.firebaseapp.com",
+      projectId: "swiftcare-26073",
+      storageBucket: "swiftcare-26073.firebasestorage.app",
+      messagingSenderId: "205955009932",
+      appId: "1:205955009932:web:748c297eeecaeef0eb1aa9"
+    });
+
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    window.login = async function() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const btn = document.getElementById('loginBtn');
+      const err = document.getElementById('error');
+
+      if (!email || !password) {
+        err.style.display = 'block';
+        err.textContent = 'Please enter email and password.';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Signing in...';
+      err.style.display = 'none';
+
+      try {
+        const cred = await signInWithEmailAndPassword(auth, email, password);
+        
+        // Verify this is a hospital admin
+        const staffDoc = await getDoc(doc(db, 'sc_staff', cred.user.uid));
+        if (staffDoc.exists() && staffDoc.data().role === 'admin') {
+          window.location.href = '/';
+        } else {
+          await auth.signOut();
+          err.style.display = 'block';
+          err.textContent = 'This account does not have Hospital Admin access.';
+          btn.disabled = false;
+          btn.textContent = 'Sign In to Hospital Dashboard';
+        }
+      } catch(e) {
+        err.style.display = 'block';
+        err.textContent = e.message.replace('Firebase: ', '');
+        btn.disabled = false;
+        btn.textContent = 'Sign In to Hospital Dashboard';
+      }
+    };
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter') window.login();
+    });
+  </script>
+</body>
+</html>

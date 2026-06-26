@@ -1,0 +1,338 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>SwiftCare Patient Kiosk</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { min-height:100vh; background:linear-gradient(135deg,#1e40af,#1d4ed8,#2563eb);
+      font-family:'Inter',sans-serif; color:#fff; display:flex; flex-direction:column; }
+    
+    .header { padding:24px 32px; display:flex; justify-content:space-between; align-items:center;
+      background:rgba(0,0,0,0.15); }
+    .logo { display:flex; align-items:center; gap:14px; }
+    .logo-box { width:52px; height:52px; background:#fff; border-radius:14px;
+      display:flex; align-items:center; justify-content:center; font-size:14px;
+      font-weight:900; color:#2563eb; }
+    .logo-text h1 { font-size:26px; font-weight:900; }
+    .logo-text p { font-size:12px; opacity:0.7; letter-spacing:2px; text-transform:uppercase; }
+    .time { font-size:28px; font-weight:700; font-variant-numeric:tabular-nums; opacity:0.9; }
+
+    .main { flex:1; display:flex; align-items:center; justify-content:center; padding:32px; }
+    
+    .kiosk-card { background:#fff; border-radius:24px; padding:48px; width:100%;
+      max-width:640px; color:#0f172a; box-shadow:0 32px 80px rgba(0,0,0,0.3); }
+    
+    .welcome { text-align:center; margin-bottom:40px; }
+    .welcome h2 { font-size:32px; font-weight:900; color:#1d4ed8; margin-bottom:8px; }
+    .welcome p { font-size:16px; color:#64748b; }
+
+    .step { display:none; }
+    .step.active { display:block; }
+
+    .form-group { margin-bottom:20px; }
+    .form-group label { display:block; font-size:14px; font-weight:700; color:#374151;
+      margin-bottom:8px; text-transform:uppercase; letter-spacing:1px; }
+    .form-group select, .form-group input {
+      width:100%; padding:16px 18px; border:2px solid #e2e8f0; border-radius:12px;
+      font-size:18px; font-family:'Inter',sans-serif; color:#0f172a; outline:none;
+      transition:border-color 0.2s; background:#f8fafc; }
+    .form-group select:focus, .form-group input:focus { border-color:#2563eb; background:#fff; }
+
+    .gender-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+    .gender-btn { padding:14px; border:2px solid #e2e8f0; border-radius:12px;
+      font-size:16px; font-weight:700; cursor:pointer; background:#f8fafc;
+      color:#374151; transition:all 0.2s; font-family:'Inter',sans-serif; }
+    .gender-btn.selected { border-color:#2563eb; background:#eff6ff; color:#1d4ed8; }
+
+    .btn-primary { width:100%; padding:20px; background:#2563eb; color:#fff; border:none;
+      border-radius:14px; font-size:20px; font-weight:800; cursor:pointer;
+      font-family:'Inter',sans-serif; transition:all 0.2s; margin-top:8px; }
+    .btn-primary:hover { background:#1d4ed8; transform:translateY(-1px); }
+    .btn-primary:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
+    .btn-back { background:none; border:2px solid #e2e8f0; color:#64748b; width:100%;
+      padding:14px; border-radius:12px; font-size:16px; font-weight:700; cursor:pointer;
+      font-family:'Inter',sans-serif; margin-top:10px; transition:all 0.2s; }
+    .btn-back:hover { border-color:#94a3b8; color:#374151; }
+
+    .ticket-screen { text-align:center; }
+    .ticket-screen h2 { font-size:28px; font-weight:900; color:#10b981; margin-bottom:8px; }
+    .ticket-screen p { font-size:16px; color:#64748b; margin-bottom:32px; }
+    .ticket-number { background:linear-gradient(135deg,#eff6ff,#dbeafe); border:3px solid #2563eb;
+      border-radius:20px; padding:40px; margin-bottom:32px; }
+    .ticket-label { font-size:14px; font-weight:700; color:#64748b; letter-spacing:2px;
+      text-transform:uppercase; margin-bottom:8px; }
+    .ticket-num { font-size:80px; font-weight:900; color:#1d4ed8; letter-spacing:8px;
+      line-height:1; }
+    .ticket-dept { font-size:18px; color:#374151; font-weight:600; margin-top:12px; }
+    .ticket-info { background:#f0fdf4; border-radius:12px; padding:16px; margin-bottom:24px;
+      font-size:15px; color:#065f46; font-weight:600; }
+    .btn-new { width:100%; padding:18px; background:#10b981; color:#fff; border:none;
+      border-radius:14px; font-size:18px; font-weight:800; cursor:pointer;
+      font-family:'Inter',sans-serif; transition:all 0.2s; }
+    .btn-new:hover { background:#059669; }
+
+    .footer { padding:16px 32px; display:flex; justify-content:space-between; align-items:center;
+      background:rgba(0,0,0,0.15); }
+    .footer-text { font-size:12px; opacity:0.6; }
+    .staff-link { font-size:13px; color:rgba(255,255,255,0.7); text-decoration:none;
+      padding:8px 16px; border:1px solid rgba(255,255,255,0.3); border-radius:8px;
+      transition:all 0.2s; }
+    .staff-link:hover { background:rgba(255,255,255,0.1); color:#fff; }
+
+    .loading { text-align:center; padding:40px; color:#64748b; font-size:16px; }
+    .error-msg { background:#fee2e2; color:#991b1b; border-radius:10px; padding:12px 16px;
+      font-size:14px; font-weight:600; margin-top:12px; display:none; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="logo">
+      <div class="logo-box">SC</div>
+      <div class="logo-text">
+        <h1>SwiftCare</h1>
+        <p>Patient Self Check-In Kiosk</p>
+      </div>
+    </div>
+    <div class="time" id="clock">--:--</div>
+  </div>
+
+  <div class="main">
+    <div class="kiosk-card">
+      <div class="welcome">
+        <h2>Welcome to Our Hospital</h2>
+        <p>Please check in below to join the queue</p>
+      </div>
+
+      <!-- STEP 1: Select Hospital & Department -->
+      <div class="step active" id="step1">
+        <div class="form-group">
+          <label>Select Hospital</label>
+          <select id="hospitalSelect">
+            <option value="">Loading hospitals...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Select Department</label>
+          <select id="deptSelect">
+            <option value="">-- Select department --</option>
+          </select>
+        </div>
+        <button class="btn-primary" onclick="goStep2()">Next: Enter Your Details →</button>
+        <div class="error-msg" id="err1"></div>
+      </div>
+
+      <!-- STEP 2: Patient Details -->
+      <div class="step" id="step2">
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="patName" placeholder="Enter your full name"/>
+        </div>
+        <div class="form-group">
+          <label>Age</label>
+          <input type="number" id="patAge" placeholder="Enter your age" min="0" max="120"/>
+        </div>
+        <div class="form-group">
+          <label>Gender</label>
+          <div class="gender-grid">
+            <button class="gender-btn" onclick="selectGender('Male',this)">Male</button>
+            <button class="gender-btn" onclick="selectGender('Female',this)">Female</button>
+            <button class="gender-btn" onclick="selectGender('Other',this)">Other</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Phone Number (Optional)</label>
+          <input type="tel" id="patPhone" placeholder="Enter phone number"/>
+        </div>
+        <button class="btn-primary" onclick="checkIn()">Check In Now</button>
+        <button class="btn-back" onclick="goBack()">Back</button>
+        <div class="error-msg" id="err2"></div>
+      </div>
+
+      <!-- STEP 3: Ticket -->
+      <div class="step" id="step3">
+        <div class="ticket-screen">
+          <h2>You are checked in!</h2>
+          <p>Please wait — you will be called when it's your turn</p>
+          <div class="ticket-number">
+            <div class="ticket-label">Your Ticket Number</div>
+            <div class="ticket-num" id="ticketNum">--</div>
+            <div class="ticket-dept" id="ticketDept"></div>
+          </div>
+          <div class="ticket-info" id="ticketInfo"></div>
+          <button class="btn-new" onclick="reset()">Check In Another Patient</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-text">SwiftCare Patient Kiosk &copy; 2026 Wiles Digital Group LLC</div>
+    <a href="/staff.html" class="staff-link">Staff Login</a>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, getDocs, addDoc, query, where,
+      serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const app = initializeApp({
+      apiKey: "AIzaSyCWAEzL_41qvlq_PFAK1yZy-kc_W-Z66yc",
+      authDomain: "swiftcare-26073.firebaseapp.com",
+      projectId: "swiftcare-26073",
+      storageBucket: "swiftcare-26073.firebasestorage.app",
+      messagingSenderId: "205955009932",
+      appId: "1:205955009932:web:748c297eeecaeef0eb1aa9"
+    });
+
+    const db = getFirestore(app);
+
+    const DEPARTMENTS = [
+      { id:"reception", label:"Reception", code:"RC" },
+      { id:"triage", label:"Triage / Nurse", code:"TR" },
+      { id:"doctor", label:"Doctor", code:"DR" },
+      { id:"lab", label:"Laboratory", code:"LB" },
+      { id:"pharmacy", label:"Pharmacy", code:"PH" },
+      { id:"maternity", label:"Maternity", code:"MT" },
+      { id:"emergency", label:"Emergency", code:"ER" },
+      { id:"xray", label:"X-Ray / Imaging", code:"XR" },
+      { id:"dental", label:"Dental", code:"DN" },
+      { id:"billing", label:"Billing / Cashier", code:"BL" },
+      { id:"opd", label:"OPD (Outpatient)", code:"OP" },
+      { id:"maleward", label:"Male Ward", code:"MW" },
+      { id:"femaleward", label:"Female Ward", code:"FW" },
+      { id:"pediatrics", label:"Pediatrics", code:"PD" },
+      { id:"surgical", label:"Surgical / Theater", code:"SG" },
+      { id:"eyecenter", label:"Eye Center", code:"EY" },
+      { id:"antenatal", label:"Antenatal Care", code:"AN" },
+      { id:"dressing", label:"Wound Dressing", code:"WD" },
+      { id:"nutrition", label:"Nutrition / Feeding", code:"NT" },
+      { id:"mortuary", label:"Mortuary", code:"MO" },
+    ];
+
+    let selectedGender = "";
+    let hospitals = [];
+
+    // Clock
+    setInterval(() => {
+      const now = new Date();
+      document.getElementById('clock').textContent =
+        now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    }, 1000);
+
+    // Load hospitals
+    async function loadHospitals() {
+      const snap = await getDocs(query(collection(db,'sc_hospitals'), where('active','==',true)));
+      hospitals = snap.docs.map(d => ({id:d.id, ...d.data()}));
+      const sel = document.getElementById('hospitalSelect');
+      sel.innerHTML = '<option value="">-- Select hospital --</option>';
+      hospitals.forEach(h => {
+        const opt = document.createElement('option');
+        opt.value = h.id; opt.textContent = h.name;
+        sel.appendChild(opt);
+      });
+    }
+
+    // Load departments
+    const deptSel = document.getElementById('deptSelect');
+    DEPARTMENTS.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.id; opt.textContent = d.label;
+      deptSel.appendChild(opt);
+    });
+
+    window.selectGender = (g, btn) => {
+      selectedGender = g;
+      document.querySelectorAll('.gender-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+    };
+
+    window.goStep2 = () => {
+      const hosp = document.getElementById('hospitalSelect').value;
+      const dept = document.getElementById('deptSelect').value;
+      const err = document.getElementById('err1');
+      if (!hosp || !dept) {
+        err.style.display = 'block';
+        err.textContent = 'Please select a hospital and department.';
+        return;
+      }
+      err.style.display = 'none';
+      document.getElementById('step1').classList.remove('active');
+      document.getElementById('step2').classList.add('active');
+    };
+
+    window.goBack = () => {
+      document.getElementById('step2').classList.remove('active');
+      document.getElementById('step1').classList.add('active');
+    };
+
+    window.checkIn = async () => {
+      const name = document.getElementById('patName').value.trim();
+      const age = document.getElementById('patAge').value;
+      const phone = document.getElementById('patPhone').value.trim();
+      const err = document.getElementById('err2');
+      if (!name || !age) {
+        err.style.display = 'block';
+        err.textContent = 'Please enter your name and age.';
+        return;
+      }
+      err.style.display = 'none';
+
+      const hospitalId = document.getElementById('hospitalSelect').value;
+      const deptId = document.getElementById('deptSelect').value;
+      const hospital = hospitals.find(h => h.id === hospitalId);
+      const dept = DEPARTMENTS.find(d => d.id === deptId);
+
+      try {
+        const today = new Date(); today.setHours(0,0,0,0);
+        const qSnap = await getDocs(query(collection(db,'sc_queue'),
+          where('hospitalId','==',hospitalId), where('deptId','==',deptId)));
+        const todayCount = qSnap.docs.filter(d => {
+          const ts = d.data().createdAt?.toDate?.();
+          return ts && ts >= today;
+        }).length;
+
+        const ticket = dept.code + '-' + String(todayCount + 1).padStart(3,'0');
+
+        await addDoc(collection(db,'sc_queue'), {
+          hospitalId, hospitalName: hospital?.name || '',
+          deptId, deptLabel: dept.label,
+          patientName: name, patientAge: Number(age),
+          patientPhone: phone || null,
+          patientGender: selectedGender || null,
+          ticket, status: 'waiting',
+          createdAt: serverTimestamp(),
+          checkinType: 'kiosk', position: todayCount + 1,
+        });
+
+        document.getElementById('ticketNum').textContent = ticket;
+        document.getElementById('ticketDept').textContent = dept.label;
+        document.getElementById('ticketInfo').textContent =
+          'Hello ' + name + '! You are #' + (todayCount + 1) + ' in the ' + dept.label + ' queue at ' + hospital?.name;
+
+        document.getElementById('step2').classList.remove('active');
+        document.getElementById('step3').classList.add('active');
+      } catch(e) {
+        err.style.display = 'block';
+        err.textContent = 'Error: ' + e.message;
+      }
+    };
+
+    window.reset = () => {
+      document.getElementById('step3').classList.remove('active');
+      document.getElementById('step1').classList.add('active');
+      document.getElementById('patName').value = '';
+      document.getElementById('patAge').value = '';
+      document.getElementById('patPhone').value = '';
+      selectedGender = '';
+      document.querySelectorAll('.gender-btn').forEach(b => b.classList.remove('selected'));
+    };
+
+    loadHospitals();
+  </script>
+</body>
+</html>
