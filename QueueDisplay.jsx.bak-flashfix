@@ -363,12 +363,8 @@ const unsub = onSnapshot(q, (snap) => {
   // ── Flash + Voice ──────────────────────────────────────────────────────────
   const triggerFlash = useCallback((item) => {
     setFlash(item);
-    setTimeout(() => setFlash(null), 5000);  // schedule clear FIRST — nothing can prevent it
-    try {
-      announce(item.ticket, item.deptId, item.window);
-    } catch (e) {
-      console.warn("Announce failed (non-fatal):", e);
-    }
+    announce(item.ticket, item.deptId, item.window);
+    setTimeout(() => setFlash(null), 5000);
   }, []);
 
   // ── Formatted time/date ────────────────────────────────────────────────────
